@@ -1,0 +1,52 @@
+name: Курс НБРК
+
+on:
+  schedule:
+    # каждые 4 часа (время UTC; в Алматы +5)
+    - cron: '17 */4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: rate
+  cancel-in-progress: false
+
+jobs:
+  rate:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Забрать курс с сайта НБРК
+        run: python3 fetch_rate.py
+
+      - name: Сохранить, если курс изменился
+        run: |
+          if ! git diff --quiet -- rate.json || [ -n "$(git status --porcelain rate.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add rate.json
+            git commit -m "Курс НБРК на $(python3 -c 'import json; print(json.load(open("rate.json"))["date"])')"
+            git push
+          fi
+
+      - name: Собрать сайт с курсом
+        run: |
+          mkdir -p _site
+          cp rate.json _site/rate.json
+
+      - uses: actions/configure-pages@v6
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - id: deploy
+        uses: actions/deploy-pages@v5
